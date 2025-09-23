@@ -1,0 +1,217 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Consensus Formation</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#0b0f14; color:#eee; margin:0; display:flex; }
+    #ui { width:300px; padding:12px; background:#071016; box-shadow:4px 0 20px rgba(0,0,0,.6); }
+    canvas { background:#061014; display:block; margin:12px; border:1px solid #223; }
+    label { font-size:13px; display:block; margin-top:8px; }
+    input[type=range] { width:100%; }
+    button { margin-top:10px; padding:8px 12px; }
+    .row { display:flex; gap:8px; align-items:center; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <h3>Consensus Formation</h3>
+    <div class="row">
+      <button id="resetBtn">Reset</button>
+      <button id="toggleSim">Pause</button>
+    </div>
+    <label>Agents: <span id="nLabel"></span></label>
+    <input id="numAgents" type="range" min="10" max="500" value="120">
+    <label>Neighbor radius: <span id="rLabel"></span></label>
+    <input id="radius" type="range" min="10" max="200" value="60">
+    <label>Influence (mu): <span id="muLabel"></span></label>
+    <input id="mu" type="range" min="0.01" max="1.0" step="0.01" value="0.2">
+    <label>Noise: <span id="noiseLabel"></span></label>
+    <input id="noise" type="range" min="0" max="0.1" step="0.001" value="0.005">
+    <hr>
+    <div style="font-size:12px; color:#bcd;">Click canvas to add an agent with opinion = clicked color value.</div>
+    <div style="font-size:12px; margin-top:6px;">Color maps opinion: blue (0) → gray → red (1).</div>
+  </div>
+
+  <canvas id="c" width="800" height="600"></canvas>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  const numAgentsInput = document.getElementById('numAgents');
+  const radiusInput = document.getElementById('radius');
+  const muInput = document.getElementById('mu');
+  const noiseInput = document.getElementById('noise');
+  const resetBtn = document.getElementById('resetBtn');
+  const toggleSim = document.getElementById('toggleSim');
+
+  const nLabel = document.getElementById('nLabel');
+  const rLabel = document.getElementById('rLabel');
+  const muLabel = document.getElementById('muLabel');
+  const noiseLabel = document.getElementById('noiseLabel');
+
+  let width = canvas.width, height = canvas.height;
+
+  function updateLabels(){
+    nLabel.textContent = numAgentsInput.value;
+    rLabel.textContent = radiusInput.value;
+    muLabel.textContent = Number(muInput.value).toFixed(2);
+    noiseLabel.textContent = Number(noiseInput.value).toFixed(3);
+  }
+  updateLabels();
+
+  let agents = [];
+  function resetAgents(n){
+    agents = [];
+    for (let i=0;i<n;i++){
+      const op = Math.random(); // uniform opinion
+      agents.push({
+        x: Math.random()*width,
+        y: Math.random()*height,
+        opinion: op
+      });
+    }
+    // optional: make two clusters for interesting behavior
+    if (Math.random() < 0.6){
+      // create bimodal initial distribution half left blue half right red
+      for (let i=0;i<agents.length;i++){
+        if (i < agents.length/2){
+          agents[i].x = Math.random()*width*0.45;
+          agents[i].opinion = Math.random()*0.2 + 0.05;
+        } else {
+          agents[i].x = width*0.55 + Math.random()*width*0.45;
+          agents[i].opinion = 0.8 + Math.random()*0.15;
+        }
+      }
+    }
+  }
+  resetAgents(Number(numAgentsInput.value));
+
+  function opinionToColor(op){
+    // map [0,1] to color from blue -> gray -> red
+    const r = Math.round(255 * Math.min(1, op*1.4));
+    const b = Math.round(255 * Math.min(1, (1-op)*1.4));
+    const g = Math.round(150 * (1 - Math.abs(op-0.5)*2));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function stepConsensus(){
+    const mu = Number(muInput.value);
+    const r = Number(radiusInput.value);
+    const noise = Number(noiseInput.value);
+
+    // synchronous update — compute new opinions for all agents based on neighbors
+    const newOpinions = new Float32Array(agents.length);
+    for (let i=0;i<agents.length;i++){
+      const a = agents[i];
+      // aggregate neighbors within radius
+      let sum = 0, count = 0;
+      for (let j=0;j<agents.length;j++){
+        if (i===j) continue;
+        const b = agents[j];
+        const dx = a.x - b.x, dy = a.y - b.y;
+        if (dx*dx + dy*dy <= r*r){
+          sum += b.opinion;
+          count++;
+        }
+      }
+      if (count === 0){
+        newOpinions[i] = a.opinion + (Math.random()*2-1)*noise;
+      } else {
+        const neighborAvg = sum / count;
+        // move a fraction mu toward neighbor average, plus small noise
+        newOpinions[i] = a.opinion + mu * (neighborAvg - a.opinion) + (Math.random()*2-1)*noise;
+        // clamp
+        if (newOpinions[i] < 0) newOpinions[i] = 0;
+        if (newOpinions[i] > 1) newOpinions[i] = 1;
+      }
+    }
+    for (let i=0;i<agents.length;i++) agents[i].opinion = newOpinions[i];
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,width,height);
+    // draw links lightly (optional)
+    // draw agents
+    for (let a of agents){
+      ctx.beginPath();
+      ctx.fillStyle = opinionToColor(a.opinion);
+      ctx.arc(a.x, a.y, 6, 0, Math.PI*2);
+      ctx.fill();
+      // small outline
+      ctx.strokeStyle = '#072028';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    // small histogram in corner
+    drawHistogram();
+  }
+
+  function drawHistogram(){
+    const bins = 20;
+    const hist = new Array(bins).fill(0);
+    for (let a of agents) {
+      const idx = Math.floor(a.opinion * bins);
+      hist[Math.min(bins-1,Math.max(0,idx))]++;
+    }
+    const hx = width - 150, hy = 10, hw = 140, hh = 80;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(hx-6, hy-6, hw+12, hh+12);
+    const maxv = Math.max(...hist,1);
+    for (let i=0;i<bins;i++){
+      const b = hist[i];
+      const bw = hw/bins;
+      const bh = (b/maxv) * hh;
+      const x = hx + i*bw;
+      const y = hy + hh - bh;
+      const col = opinionToColor(i/(bins-1));
+      ctx.fillStyle = col;
+      ctx.fillRect(x, y, bw-1, bh);
+    }
+    ctx.strokeStyle = '#223';
+    ctx.strokeRect(hx-6, hy-6, hw+12, hh+12);
+  }
+
+  let running = true;
+  function loop(){
+    if (running){
+      // update agents count
+      const desired = Number(numAgentsInput.value);
+      if (agents.length < desired) {
+        // add more agents using random positions/opinions
+        for (let i=0;i<desired-agents.length;i++){
+          agents.push({ x: Math.random()*width, y: Math.random()*height, opinion: Math.random() });
+        }
+      } else if (agents.length > desired) agents.length = desired;
+
+      stepConsensus();
+      draw();
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // canvas click to add agent
+  canvas.addEventListener('click', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    // opinion determined by x position (left=0 blue, right=1 red)
+    const op = x / width;
+    agents.push({ x, y, opinion: op });
+  });
+
+  // UI bindings
+  numAgentsInput.addEventListener('input', updateLabels);
+  radiusInput.addEventListener('input', updateLabels);
+  muInput.addEventListener('input', updateLabels);
+  noiseInput.addEventListener('input', updateLabels);
+  resetBtn.addEventListener('click', ()=> resetAgents(Number(numAgentsInput.value)));
+  toggleSim.addEventListener('click', ()=> { running = !running; toggleSim.textContent = running ? 'Pause' : 'Resume'; });
+
+})();
+</script>
+</body>
+</html>
