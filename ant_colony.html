@@ -2,10 +2,10 @@
 <html>
 <head>
 <meta charset="utf-8"/>
-<title>Ant Colony — Homing Avoids Repellent (Reverted Wall Logic)</title>
+<title>Ant Colony — Homing Avoids Repellent (Border Walls)</title>
 <style>
   body { font-family: Inter, Arial, sans-serif; background:#071018; color:#dfeef7; margin:0; display:flex; }
-  #ui { width:460px; padding:14px; background:#06121a; box-shadow:6px 0 30px rgba(0,0,0,.6); }
+  #ui { width:460px; padding:14px; background:#06121a; box-shadow:6px 0 30px rgba(0,0,0,.6); overflow:auto; max-height:100vh; }
   canvas { background:#071018; display:block; margin:12px; border:1px solid #15202b; }
   label { font-size:13px; color:#9fb3c6; display:block; margin-top:10px; }
   input[type=range] { width:100%; }
@@ -22,57 +22,57 @@
     <div class="row"><button id="resetBtn">Reset</button><button id="toggleSim">Pause</button></div>
 
     <label>Ants: <span id="numAntsLabel"></span></label>
-    <input id="numAnts" type="range" min="10" max="600" value="120">
+    <input id="numAnts" type="range" min="10" max="3000" value="600">
 
     <label>Carrying deposit (trail): <span id="pdLabel"></span></label>
     <input id="pheromoneDeposit" type="range" min="0.01" max="1" step="0.01" value="0.22">
 
     <label>Baseline deposit (explore): <span id="baseLabel"></span></label>
-    <input id="baselineDeposit" type="range" min="0.000" max="0.5" step="0.001" value="0.03">
+    <input id="baselineDeposit" type="range" min="0.000" max="0.5" step="0.001" value="0.00">
 
     <label>Evaporation (trail): <span id="evapLabel"></span></label>
-    <input id="evap" type="range" min="0.90" max="0.999" step="0.001" value="0.985">
+    <input id="evap" type="range" min="0.90" max="0.999" step="0.001" value="0.988">
 
     <label>Leak (trail): <span id="leakLabel"></span></label>
-    <input id="leak" type="range" min="0.000" max="0.01" step="0.0005" value="0.0004">
+    <input id="leak" type="range" min="0.000" max="0.01" step="0.0005" value="0.0005">
 
     <hr>
 
     <label>Super-beacon deposit (burst at find): <span id="superDepLabel"></span></label>
-    <input id="superDeposit" type="range" min="0.01" max="6.0" step="0.01" value="1.4">
+    <input id="superDeposit" type="range" min="0.01" max="6.0" step="0.01" value="1.850">
 
     <label>Super evaporation multiplier: <span id="superEvapLabel"></span></label>
     <input id="superEvap" type="range" min="0.90" max="0.9999" step="0.0001" value="0.995">
 
     <label>Super leak: <span id="superLeakLabel"></span></label>
-    <input id="superLeak" type="range" min="0.0000" max="0.01" step="0.0001" value="0.00005">
+    <input id="superLeak" type="range" min="0.0000" max="0.01" step="0.0001" value="0.0001">
 
     <label>Super weight in sensing: <span id="superWeightLabel"></span></label>
-    <input id="superWeight" type="range" min="0.0" max="20.0" step="0.1" value="6.0">
+    <input id="superWeight" type="range" min="0.0" max="20.0" step="0.1" value="10.20">
 
     <hr>
 
     <label>Repellent deposit on wall-hit: <span id="repelDepLabel"></span></label>
-    <input id="repelDeposit" type="range" min="0.0" max="1.5" step="0.001" value="0.09">
+    <input id="repelDeposit" type="range" min="0.0" max="1.5" step="0.001" value="0.499">
 
     <label>Repellent halo factor (neighbors on collision): <span id="repelHaloLabel"></span></label>
-    <input id="repelHalo" type="range" min="0.0" max="1.0" step="0.01" value="0.5">
+    <input id="repelHalo" type="range" min="0.0" max="1.0" step="0.01" value="0.69">
 
     <label>Repellent evaporation multiplier: <span id="repelEvapLabel"></span></label>
-    <input id="repelEvap" type="range" min="0.90" max="0.999" step="0.001" value="0.95">
+    <input id="repelEvap" type="range" min="0.90" max="0.999" step="0.001" value="0.984">
 
     <label>Repellent leak: <span id="repelLeakLabel"></span></label>
-    <input id="repelLeak" type="range" min="0.000" max="0.02" step="0.0005" value="0.001">
+    <input id="repelLeak" type="range" min="0.000" max="0.02" step="0.0005" value="0.0005">
 
     <label>Repellent weight in sensing: <span id="repelWeightLabel"></span></label>
-    <input id="repelWeight" type="range" min="0.0" max="8.0" step="0.01" value="1.8">
+    <input id="repelWeight" type="range" min="0.0" max="8.0" step="0.01" value="5.38">
 
     <hr>
     <label>Exploration (noise): <span id="explLabel"></span></label>
     <input id="expl" type="range" min="0.0" max="1.0" step="0.01" value="0.24">
 
     <label>Sensor range: <span id="sensLabel"></span></label>
-    <input id="sensorRange" type="range" min="4" max="40" value="14">
+    <input id="sensorRange" type="range" min="4" max="40" value="18">
 
     <hr>
     <div class="stat">Trail mass: <span id="trailMass">0</span></div>
@@ -89,10 +89,10 @@
 
 <script>
 (() => {
-  // Canvas + UI setup
   const canvas = document.getElementById('c');
   const ctx = canvas.getContext('2d');
 
+  // UI nodes
   const numAntsInput = document.getElementById('numAnts');
   const pheromoneDepositInput = document.getElementById('pheromoneDeposit');
   const baselineDepositInput = document.getElementById('baselineDeposit');
@@ -116,6 +116,7 @@
   const resetBtn = document.getElementById('resetBtn');
   const toggleSim = document.getElementById('toggleSim');
 
+  // diagnostics
   const trailMassElm = document.getElementById('trailMass');
   const beaconMassElm = document.getElementById('beaconMass');
   const repelMassElm = document.getElementById('repelMass');
@@ -123,6 +124,7 @@
   const beaconDepositsElm = document.getElementById('beaconDeposits');
   const repelDepositsElm = document.getElementById('repelDeposits');
 
+  // labels to update
   const pdLabel = document.getElementById('pdLabel');
   const baseLabel = document.getElementById('baseLabel');
   const evapLabel = document.getElementById('evapLabel');
@@ -140,7 +142,7 @@
   const sensLabel = document.getElementById('sensLabel');
   const numAntsLabel = document.getElementById('numAntsLabel');
 
-  // Grid / DPI aware canvas sizing
+  // canvas/grid (DPI-aware)
   let width = 0, height = 0;
   const gridSize = 100;
   let cols = gridSize, rows = 0;
@@ -162,30 +164,61 @@
     cellH = height / rows;
   }
 
-  // pheromone fields
+  // fields
   let pher = new Float32Array(1), repel = new Float32Array(1), superP = new Float32Array(1);
-  function allocFields(){ const len = Math.max(1, cols*rows); pher = new Float32Array(len); repel = new Float32Array(len); superP = new Float32Array(len); }
+  function allocFields(){
+    const len = Math.max(1, cols * rows);
+    pher = new Float32Array(len);
+    repel = new Float32Array(len);
+    superP = new Float32Array(len);
+  }
 
   // obstacles
   let obstacles = new Uint8Array(1);
   function resetObstaclesDefault(){
-    obstacles = new Uint8Array(cols*rows);
-    const cx = Math.floor(cols/2), cy = Math.floor(rows/2);
-    for (let y=0;y<rows;y++){ const i = cx + y*cols; if (Math.abs(y-cy) > 6) obstacles[i] = 1; }
+    // create empty grid then set border cells as walls
+    obstacles = new Uint8Array(cols * rows);
+    // fill border
+    for (let x = 0; x < cols; x++){
+      obstacles[x + 0 * cols] = 1; // top row
+      obstacles[x + (rows - 1) * cols] = 1; // bottom row
+    }
+    for (let y = 0; y < rows; y++){
+      obstacles[0 + y * cols] = 1; // left col
+      obstacles[(cols - 1) + y * cols] = 1; // right col
+    }
+    // (no other default internal walls — you can draw them)
   }
 
   // nest & food
   let nest = {x:80,y:1}, food = {x:200,y:1};
-  function placeDefaults(){ resizeCanvasAndGrid(); nest = { x: Math.max(60, width*0.08), y: height/2 }; food = { x: Math.max(200, width - Math.max(160, width*0.12)), y: height/2 }; }
+  function placeDefaults(){
+    resizeCanvasAndGrid();
+    // ensure nest and food are placed away from the border walls (at least 1.5 cells inside)
+    const margin = Math.max(2, Math.ceil(1.5));
+    const left = margin * cellW + 8;
+    const right = width - (margin * cellW) - 8;
+    const midY = height / 2;
+    nest = { x: Math.max(left, Math.min(width*0.12, right - 50)), y: midY };
+    food = { x: Math.max(left + 120, right - 120), y: midY };
+  }
 
   // ants
   let ants = [];
   function resetAnts(n){
     ants = [];
-    for (let i=0;i<n;i++) ants.push({ x: nest.x + (Math.random()*20-10), y: nest.y + (Math.random()*20-10), angle: Math.random()*Math.PI*2, carrying:false, speed:1.6 });
+    for (let i=0;i<n;i++){
+      ants.push({
+        x: nest.x + (Math.random()*20-10),
+        y: nest.y + (Math.random()*20-10),
+        angle: Math.random()*Math.PI*2,
+        carrying: false,
+        speed: 1.6
+      });
+    }
   }
 
-  // helpers (safe indexing)
+  // safe index helpers
   function idx(cx,cy){
     const x = Number.isFinite(cx) ? Math.floor(cx) : 0;
     const y = Number.isFinite(cy) ? Math.floor(cy) : 0;
@@ -194,12 +227,17 @@
     return xi + yi * cols;
   }
   function worldToCell(x,y){
-    const cw = (cellW > 0 ? cellW : 1), ch = (cellH > 0 ? cellH : 1);
-    return { cx: Math.floor((Number(x)||0)/cw), cy: Math.floor((Number(y)||0)/ch) };
+    const cw = (cellW > 0 ? cellW : 1);
+    const ch = (cellH > 0 ? cellH : 1);
+    const cx = Math.floor((Number(x) || 0) / cw);
+    const cy = Math.floor((Number(y) || 0) / ch);
+    return { cx, cy };
   }
 
   // diagnostics
-  let wallHitCount = 0, totalBeaconDeposits = 0, totalRepelDeposits = 0;
+  let wallHitCount = 0;
+  let totalBeaconDeposits = 0;
+  let totalRepelDeposits = 0;
 
   // UI label updates
   function updateLabels(){
@@ -224,50 +262,53 @@
     sensLabel.textContent = sensorRangeInput.value;
   }
 
-  // find free direction with smallest turn (used as fallback)
-  function findBestFreeDirection(x,y,currentAngle,speed,shortRadius=4,longRadius=10,stepAngle=Math.PI/12, maxSteps=36){
-    for (let s=0; s<=maxSteps; s++){
-      const sign = (s%2===0)?1:-1;
+  // robust local-direction search (prefer smallest angular deviation)
+  function findBestFreeDirection(x,y,currentAngle,speed,shortRadius=4,longRadius=10,stepAngle= Math.PI/12, maxSteps=36){
+    for (let s = 0; s <= maxSteps; s++){
+      const sign = (s % 2 === 0) ? 1 : -1;
       const mag = Math.ceil((s+1)/2);
       const ang = currentAngle + sign * mag * stepAngle;
       const nx1 = x + Math.cos(ang) * Math.max(shortRadius, speed);
       const ny1 = y + Math.sin(ang) * Math.max(shortRadius, speed);
-      if (!obstacles[idx(worldToCell(nx1,ny1).cx, worldToCell(nx1,ny1).cy)]) return ang;
+      const c1 = worldToCell(nx1, ny1);
+      if (!obstacles[idx(c1.cx, c1.cy)]) return ang;
       const nx2 = x + Math.cos(ang) * Math.max(longRadius, speed*2);
       const ny2 = y + Math.sin(ang) * Math.max(longRadius, speed*2);
-      if (!obstacles[idx(worldToCell(nx2,ny2).cx, worldToCell(nx2,ny2).cy)]) return ang;
+      const c2 = worldToCell(nx2, ny2);
+      if (!obstacles[idx(c2.cx, c2.cy)]) return ang;
     }
     return null;
   }
 
-  // rescue if inside obstacle (rare)
-  function rescueIfInside(a){
-    const wc = worldToCell(a.x, a.y);
-    const id = idx(wc.cx, wc.cy);
+  // If an ant is inside an obstacle cell, find nearest free neighbor (BFS perimeter up to radius)
+  function escapeIfInsideObstacle(a){
+    const c = worldToCell(a.x, a.y);
+    const id = idx(c.cx, c.cy);
     if (!obstacles[id]) return false;
-    // find nearest free cell perimeter up to small radius
-    const maxR = 6;
-    for (let r=1;r<=maxR;r++){
-      for (let dy=-r; dy<=r; dy++){
-        for (let dx=-r; dx<=r; dx++){
-          if (Math.abs(dx)!==r && Math.abs(dy)!==r) continue;
-          const nx = wc.cx + dx, ny = wc.cy + dy;
-          if (nx<0||ny<0||nx>=cols||ny>=rows) continue;
-          const nid = idx(nx,ny);
+    const maxR = 4;
+    for (let r=1; r<=maxR; r++){
+      for (let dy = -r; dy <= r; dy++){
+        for (let dx = -r; dx <= r; dx++){
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          const nx = c.cx + dx, ny = c.cy + dy;
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          const nid = idx(nx, ny);
           if (!obstacles[nid]){
-            a.x = (nx + 0.5)*cellW + (Math.random()-0.5)*cellW*0.3;
-            a.y = (ny + 0.5)*cellH + (Math.random()-0.5)*cellH*0.3;
-            a.angle += Math.PI * (0.5 + Math.random()*0.6);
+            a.x = (nx + 0.5) * cellW;
+            a.y = (ny + 0.5) * cellH;
+            a.angle += Math.PI * 0.5;
             return true;
           }
         }
       }
     }
-    return false;
+    a.x -= Math.cos(a.angle) * a.speed * 1.5;
+    a.y -= Math.sin(a.angle) * a.speed * 1.5;
+    a.angle += Math.PI * 0.6;
+    return true;
   }
 
   // conservative candidate signal sampling (snapshot-based)
-  // samples at two distances and returns MIN of samples (conservative)
   function sampleCombinedSignalSnapshot(pherSnap, repelSnap, superSnap, x, y, ang, senseRange, superWeight, repelWeight){
     const dists = [ Math.max(2, senseRange*0.4), Math.max(4, senseRange) ];
     let minSig = Infinity;
@@ -319,16 +360,16 @@
     const superSnap = superP.slice();
 
     for (let a of ants){
-      // quick rescue if inside obstacle (prevents permanent stuck)
-      if (rescueIfInside(a)) {
-        // continue processing after rescue
+      // pop out from inside obstacles if necessary
+      if (escapeIfInsideObstacle(a)) {
+        // continue to processing — ant has been nudged out
       }
 
       const isCarrying = !!a.carrying;
       const senseRange = isCarrying ? Math.max(6, sensorRangeUI * 1.6) : sensorRangeUI;
       const effectiveExpl = isCarrying ? Math.max(0.02, exploration * 0.16) : exploration;
 
-      // current combined signal at ant's cell
+      // current combined signal using snapshot (super + trail - repel)
       const curCell = worldToCell(a.x, a.y);
       const curIdx = idx(curCell.cx, curCell.cy);
       const curP = Number.isFinite(pherSnap[curIdx]) ? pherSnap[curIdx] : 0;
@@ -336,22 +377,17 @@
       const curS = Number.isFinite(superSnap[curIdx]) ? superSnap[curIdx] : 0;
       const curSignal = superWeight * curS + curP - repelWeight * curR;
 
-      // candidate evaluation:
-      // - explorers use left/forward/right lookAngles (like usual)
-      // - homers: construct a candidate set around direct nest angle and also include sides
+      // evaluate candidate headings
       let candidates = [];
       if (!isCarrying){
         candidates = [-0.6, 0, 0.6].map(aoff => a.angle + aoff);
       } else {
-        // homing: evaluate direct nest heading and offsets
         const angToNest = Math.atan2(nest.y - a.y, nest.x - a.x);
-        const offsets = [0, 0.25, -0.25, 0.5, -0.5, 0.9, -0.9]; // progressively wider
+        const offsets = [0, 0.25, -0.25, 0.5, -0.5, 0.9, -0.9];
         candidates = offsets.map(off => angToNest + off);
-        // also include small local forward/back candidates in case of tight geometry
         candidates.push(a.angle, a.angle + 0.4, a.angle - 0.4);
       }
 
-      // evaluate candidates using conservative sampling (same method for both explorer & homing)
       let bestAngle = a.angle;
       let bestDiff = -Infinity;
       for (let candAng of candidates){
@@ -362,38 +398,30 @@
         }
       }
 
-      // Movement decision: prefer better signals; exploration noise still applies
+      // Movement decision
       if (bestDiff > 0 && Math.random() > effectiveExpl){
         const jitter = isCarrying ? 0.12 : 0.25;
         a.angle = bestAngle + (Math.random()-0.5) * jitter;
       } else {
-        // no attractive signal found
         if (isCarrying){
-          // Instead of going straight blindly toward nest, try small-angle candidates toward nest (above)
-          // If bestDiff <= 0, we check if the direct line is free and low-repel; if not, pick robust free direction
           const angToNest = Math.atan2(nest.y - a.y, nest.x - a.x);
-          // sample immediate test cell toward nest
           const testX = a.x + Math.cos(angToNest) * Math.max(6, a.speed*3);
           const testY = a.y + Math.sin(angToNest) * Math.max(6, a.speed*3);
           const tcell = worldToCell(testX, testY);
           const tIdx = idx(tcell.cx, tcell.cy);
           const tRepel = Number.isFinite(repelSnap[tIdx]) ? repelSnap[tIdx] : 0;
-          // if the direct test cell is free and not strongly repellent, head toward nest with jitter
           if (!obstacles[tIdx] && tRepel * repelWeight < (curSignal + 1e-6)){
             a.angle = angToNest + (Math.random()-0.5) * 0.25;
           } else {
-            // otherwise try the best candidate we computed earlier (may be a side angle)
             if (bestDiff > -1e5){
               a.angle = bestAngle + (Math.random()-0.5) * 0.3;
             } else {
-              // fallback: find small-angle free direction; if none, back up a step and try again next tick
               const alt = findBestFreeDirection(a.x, a.y, a.angle, a.speed);
               if (alt !== null) a.angle = alt;
-              else { a.x -= Math.cos(a.angle) * a.speed * 0.7; a.y -= Math.sin(a.angle) * a.speed * 0.7; a.angle += Math.PI * 0.4 * (Math.random() > 0.5 ? 1 : -1); }
+              else { a.x -= Math.cos(a.angle) * a.speed * 0.7; a.y -= Math.sin(a.angle) * a.speed * 0.7; a.angle += Math.PI * 0.45 * (Math.random() > 0.5 ? 1 : -1); }
             }
           }
         } else {
-          // explorer random walk
           a.angle += (Math.random()-0.5) * 0.8;
         }
       }
@@ -405,14 +433,15 @@
       const cIdx = idx(c.cx, c.cy);
 
       if (obstacles[cIdx]){
-        // deposit repellent at obstacle cell and halo
+        // deposit repellent at obstacle cell
         if (cIdx >= 0 && cIdx < repel.length){
-          const add = repelDeposit;
-          repel[cIdx] = (Number.isFinite(repel[cIdx]) ? repel[cIdx] + add : add);
+          const add = repelDepositInput ? Number(repelDepositInput.value) : 0.09;
+          const newv = Number.isFinite(repel[cIdx]) ? repel[cIdx] + add : add;
+          repel[cIdx] = Number.isFinite(newv) ? newv : 0;
           totalRepelDeposits += add;
         }
         wallHitCount++;
-        // halo to neighbors (so others can detect earlier)
+        // halo deposits
         if (repelHaloFactor > 0){
           const cx = Math.max(0, Math.min(cols-1, c.cx));
           const cy = Math.max(0, Math.min(rows-1, c.cy));
@@ -420,84 +449,92 @@
             for (let ox=-1; ox<=1; ox++){
               const nxCell = cx + ox, nyCell = cy + oy;
               if (nxCell < 0 || nyCell < 0 || nxCell >= cols || nyCell >= rows) continue;
-              const nId = nxCell + nyCell * cols;
+              const nId = idx(nxCell, nyCell);
               if (obstacles[nId]) continue;
-              const add = repelDeposit * repelHaloFactor;
-              repel[nId] = (Number.isFinite(repel[nId]) ? repel[nId] + add : add);
+              const add = repelDepositInput ? Number(repelDepositInput.value) * repelHaloFactor : repelHaloFactor * 0.09;
+              const newv = Number.isFinite(repel[nId]) ? repel[nId] + add : add;
+              repel[nId] = Number.isFinite(newv) ? newv : 0;
               totalRepelDeposits += add;
             }
           }
         }
-        // robust fallback: try to pick a free nearby angle
+
         const alt = findBestFreeDirection(a.x, a.y, a.angle, a.speed);
         if (alt !== null){
           a.angle = alt;
           nx = a.x + Math.cos(a.angle) * a.speed;
           ny = a.y + Math.sin(a.angle) * a.speed;
           const cc = worldToCell(nx, ny);
-          if (!obstacles[idx(cc.cx, cc.cy)]) { a.x = Math.max(2, Math.min(width-2, nx)); a.y = Math.max(2, Math.min(height-2, ny)); }
-          else { /* if still blocked we'll be nudged next tick */ }
+          if (!obstacles[idx(cc.cx, cc.cy)]) {
+            a.x = Math.max(2, Math.min(width-2, nx));
+            a.y = Math.max(2, Math.min(height-2, ny));
+          }
         } else {
-          // no nearby free direction found — back up and jitter so we're not permanently stuck
           a.x -= Math.cos(a.angle) * a.speed * 0.7;
           a.y -= Math.sin(a.angle) * a.speed * 0.7;
           a.angle += Math.PI * 0.45 * (Math.random() > 0.5 ? 1 : -1);
         }
       } else {
-        // commit move
         a.x = Math.max(2, Math.min(width-2, nx));
         a.y = Math.max(2, Math.min(height-2, ny));
       }
 
-      // pickup/drop & beacon deposit
+      // pickup/drop + beacon deposit (instant burst)
       const dFood = Math.hypot(a.x - food.x, a.y - food.y);
       if (!a.carrying && dFood < 6){
         a.carrying = true;
         const wc = worldToCell(a.x, a.y);
         const id = idx(wc.cx, wc.cy);
         if (id >= 0 && id < superP.length){
-          const add = superDeposit;
-          superP[id] = (Number.isFinite(superP[id]) ? superP[id] + add : add);
+          const add = Number(superDepositInput.value);
+          const newv = Number.isFinite(superP[id]) ? superP[id] + add : add;
+          superP[id] = Number.isFinite(newv) ? newv : 0;
           totalBeaconDeposits += add;
         }
       }
       const dNest = Math.hypot(a.x - nest.x, a.y - nest.y);
       if (a.carrying && dNest < 8) a.carrying = false;
 
-      // deposition baseline + carry
+      // deposition: baseline + carry deposit
       const wc2 = worldToCell(a.x, a.y);
       const id2 = idx(wc2.cx, wc2.cy);
       if (id2 >= 0 && id2 < pher.length){
-        if (baselineDeposit > 0) pher[id2] = (Number.isFinite(pher[id2]) ? pher[id2] + baselineDeposit : baselineDeposit);
-        if (a.carrying) pher[id2] = (Number.isFinite(pher[id2]) ? pher[id2] + carryDeposit : carryDeposit);
+        const base = Number(baselineDepositInput.value);
+        if (base > 0){
+          pher[id2] = Number.isFinite(pher[id2]) ? (pher[id2] + base) : base;
+        }
+        if (a.carrying){
+          const carry = Number(pheromoneDepositInput.value);
+          pher[id2] = Number.isFinite(pher[id2]) ? (pher[id2] + carry) : carry;
+        }
       }
     } // end ants loop
 
-    // evaporate
+    // evaporation (apply to live arrays)
     for (let i=0;i<pher.length;i++){
       let v = Number.isFinite(pher[i]) ? pher[i] : 0;
-      v = v * evap - leak;
+      v = v * Number(evapInput.value) - Number(leakInput.value);
       if (!Number.isFinite(v) || v <= 0) v = 0;
       pher[i] = v;
     }
     for (let i=0;i<superP.length;i++){
       let v = Number.isFinite(superP[i]) ? superP[i] : 0;
-      v = v * superEvap - superLeak;
+      v = v * Number(superEvapInput.value) - Number(superLeakInput.value);
       if (!Number.isFinite(v) || v <= 0) v = 0;
       superP[i] = v;
     }
     for (let i=0;i<repel.length;i++){
       let v = Number.isFinite(repel[i]) ? repel[i] : 0;
-      v = v * repelEvap - repelLeak;
+      v = v * Number(repelEvapInput.value) - Number(repelLeakInput.value);
       if (!Number.isFinite(v) || v <= 0) v = 0;
       repel[i] = v;
     }
 
-    // diffusion (gentle) for visuals & sensing
+    // diffusion (gentle)
     const pcopy = pher.slice(), scap = superP.slice(), rcopy = repel.slice();
     for (let y=0;y<rows;y++){
       for (let x=0;x<cols;x++){
-        const id = x + y*cols;
+        const id = x + y * cols;
         let psum = pcopy[id], pcount = 1;
         let ssum = scap[id], scount = 1;
         let rsum = rcopy[id], rcount = 1;
@@ -513,11 +550,13 @@
         if (!Number.isFinite(newp) || newp <= 0) newp = 0;
         if (!Number.isFinite(news) || news <= 0) news = 0;
         if (!Number.isFinite(newr) || newr <= 0) newr = 0;
-        pher[id] = newp; superP[id] = news; repel[id] = newr;
+        pher[id] = newp;
+        superP[id] = news;
+        repel[id] = newr;
       }
     }
 
-    // diagnostics update
+    // diagnostics after diffusion
     let trailMass = 0, beaconMass = 0, repelMass = 0;
     for (let i=0;i<pher.length;i++) trailMass += (Number.isFinite(pher[i]) ? pher[i] : 0);
     for (let i=0;i<superP.length;i++) beaconMass += (Number.isFinite(superP[i]) ? superP[i] : 0);
@@ -531,51 +570,76 @@
     repelDepositsElm.textContent = totalRepelDeposits.toFixed(3);
   }
 
-  // draw
+  // draw (auto-normalize)
   function draw(){
     resizeCanvasAndGrid();
     ctx.clearRect(0,0,width,height);
 
-    let maxTrail=0, maxSuper=0, maxRepel=0;
+    let maxTrail = 0, maxSuper = 0, maxRepel = 0;
     for (let i=0;i<pher.length;i++){
-      const pv = Number.isFinite(pher[i]) ? pher[i] : 0; if (pv>maxTrail) maxTrail=pv;
-      const sv = Number.isFinite(superP[i]) ? superP[i] : 0; if (sv>maxSuper) maxSuper=sv;
-      const rv = Number.isFinite(repel[i]) ? repel[i] : 0; if (rv>maxRepel) maxRepel=rv;
+      const pv = Number.isFinite(pher[i]) ? pher[i] : 0;
+      if (pv > maxTrail) maxTrail = pv;
+      const sv = Number.isFinite(superP[i]) ? superP[i] : 0;
+      if (sv > maxSuper) maxSuper = sv;
+      const rv = Number.isFinite(repel[i]) ? repel[i] : 0;
+      if (rv > maxRepel) maxRepel = rv;
     }
 
-    // trail (orange)
+    // draw trail (orange)
     for (let y=0;y<rows;y++){
       for (let x=0;x<cols;x++){
-        const i = x + y*cols; const v = Number.isFinite(pher[i]) ? pher[i] : 0;
-        if (v>0){ const alpha = Math.min(1, v / (maxTrail||1) * 0.9); ctx.fillStyle = `rgba(255,165,0,${alpha})`; ctx.fillRect(x*cellW,y*cellH,cellW,cellH); }
+        const i = x + y * cols;
+        const v = Number.isFinite(pher[i]) ? pher[i] : 0;
+        if (v > 0){
+          const alpha = Math.min(1, v / (maxTrail || 1) * 0.9);
+          ctx.fillStyle = `rgba(255,165,0,${alpha})`;
+          ctx.fillRect(x*cellW, y*cellH, cellW, cellH);
+        }
       }
     }
-    // beacon (purple)
+    // super beacon (purple)
     for (let y=0;y<rows;y++){
       for (let x=0;x<cols;x++){
-        const i = x + y*cols; const v = Number.isFinite(superP[i]) ? superP[i] : 0;
-        if (v>0){ const alpha = Math.min(1, v / (maxSuper||1) * 0.95); ctx.fillStyle = `rgba(200,90,255,${alpha})`; ctx.fillRect(x*cellW,y*cellH,cellW,cellH); }
+        const i = x + y * cols;
+        const v = Number.isFinite(superP[i]) ? superP[i] : 0;
+        if (v > 0){
+          const alpha = Math.min(1, v / (maxSuper || 1) * 0.95);
+          ctx.fillStyle = `rgba(200,90,255,${alpha})`;
+          ctx.fillRect(x*cellW, y*cellH, cellW, cellH);
+        }
       }
     }
     // repellent (blue)
     for (let y=0;y<rows;y++){
       for (let x=0;x<cols;x++){
-        const i = x + y*cols; const v = Number.isFinite(repel[i]) ? repel[i] : 0;
-        if (v>0){ const alpha = Math.min(0.9, v / (maxRepel||1) * 0.9); ctx.fillStyle = `rgba(60,150,255,${alpha})`; ctx.fillRect(x*cellW,y*cellH,cellW,cellH); }
+        const i = x + y * cols;
+        const v = Number.isFinite(repel[i]) ? repel[i] : 0;
+        if (v > 0){
+          const alpha = Math.min(0.9, v / (maxRepel || 1) * 0.9);
+          ctx.fillStyle = `rgba(60,150,255,${alpha})`;
+          ctx.fillRect(x*cellW, y*cellH, cellW, cellH);
+        }
       }
     }
 
-    // obstacles
+    // obstacles (including border)
     ctx.fillStyle = '#333';
-    for (let y=0;y<rows;y++) for (let x=0;x<cols;x++) if (obstacles[x + y*cols]) ctx.fillRect(x*cellW,y*cellH,cellW,cellH);
+    for (let y=0;y<rows;y++){
+      for (let x=0;x<cols;x++){
+        if (obstacles[x + y*cols]) ctx.fillRect(x*cellW, y*cellH, cellW, cellH);
+      }
+    }
 
     // nest & food
-    ctx.beginPath(); ctx.fillStyle='lime'; ctx.arc(nest.x,nest.y,10,0,Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.fillStyle='crimson'; ctx.arc(food.x,food.y,10,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.fillStyle = 'lime'; ctx.arc(nest.x, nest.y, 10, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.fillStyle = 'crimson'; ctx.arc(food.x, food.y, 10, 0, Math.PI*2); ctx.fill();
 
     // ants
     for (let a of ants){
-      ctx.beginPath(); ctx.fillStyle = a.carrying ? 'yellow' : 'white'; ctx.arc(a.x, a.y, 3, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath();
+      ctx.fillStyle = a.carrying ? 'yellow' : 'white';
+      ctx.arc(a.x, a.y, 3, 0, Math.PI*2);
+      ctx.fill();
     }
   }
 
@@ -583,18 +647,25 @@
   let running = true;
   function loop(){
     if (running){
-      const desired = Number(numAntsInput.value) || 120;
+      const desired = Number(numAntsInput.value) || 100;
       if (ants.length < desired) resetAnts(desired);
       else if (ants.length > desired) ants.length = desired;
-      stepSim(); draw();
+      stepSim();
+      draw();
     }
     requestAnimationFrame(loop);
   }
 
-  // init / reset
+  // init/reset
   function resetAll(){
-    resizeCanvasAndGrid(); allocFields(); placeDefaults(); resetObstaclesDefault(); resetAnts(Number(numAntsInput.value)||120);
-    wallHitCount = 0; totalBeaconDeposits = 0; totalRepelDeposits = 0;
+    resizeCanvasAndGrid();
+    allocFields();
+    placeDefaults();
+    resetObstaclesDefault();
+    resetAnts(Number(numAntsInput.value) || 600);
+    wallHitCount = 0;
+    totalBeaconDeposits = 0;
+    totalRepelDeposits = 0;
   }
   resetAll();
   requestAnimationFrame(loop);
@@ -606,11 +677,24 @@
   window.addEventListener('pointerup', () => drawing = false);
   function drawObstacleAt(e){
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left; const y = e.clientY - rect.top;
-    const c = worldToCell(x,y); const id = idx(c.cx,c.cy);
-    if (id>=0 && id<obstacles.length) obstacles[id] = 1;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const c = worldToCell(x, y);
+    const id = idx(c.cx, c.cy);
+    // do not allow drawing on the border (it is already a wall)
+    if (id >= 0 && id < obstacles.length && c.cx > 0 && c.cx < cols-1 && c.cy > 0 && c.cy < rows-1) obstacles[id] = 1;
   }
-  canvas.addEventListener('contextmenu', (e) => { e.preventDefault(); const rect = canvas.getBoundingClientRect(); food.x = e.clientX - rect.left; food.y = e.clientY - rect.top; });
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    // ensure food placed inside border
+    const c = worldToCell(x,y);
+    if (c.cx > 0 && c.cx < cols-1 && c.cy > 0 && c.cy < rows-1){
+      food.x = x; food.y = y;
+    }
+  });
 
   // UI bindings
   const uiElems = [numAntsInput, pheromoneDepositInput, baselineDepositInput, evapInput, leakInput,
@@ -618,7 +702,7 @@
                    repelDepositInput, repelHaloInput, repelEvapInput, repelLeakInput, repelWeightInput,
                    explInput, sensorRangeInput];
   uiElems.forEach(el => el.addEventListener('input', updateLabels));
-  resetBtn.addEventListener('click', () => resetAll());
+  resetBtn.addEventListener('click', () => { resetAll(); });
   toggleSim.addEventListener('click', () => { running = !running; toggleSim.textContent = running ? 'Pause' : 'Resume'; });
 
   updateLabels();
