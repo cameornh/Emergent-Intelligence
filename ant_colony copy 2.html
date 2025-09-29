@@ -1,0 +1,318 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Ant Colony — Trail-Following Homing (Fixed)</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #111; color: #eee; margin:0; display:flex; }
+    #ui { width:340px; padding:12px; background:#0f1720; box-shadow:4px 0 20px rgba(0,0,0,.6); }
+    canvas { background:#111; display:block; margin:12px; border:1px solid #222; }
+    label { font-size:13px; display:block; margin-top:8px; }
+    input[type=range] { width:100%; }
+    button { margin-top:10px; padding:8px 12px; }
+    .row { display:flex; gap:8px; align-items:center; margin-top:8px; }
+    .hint { font-size:12px; color:#bcd; margin-top:6px; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <h3>Ant Colony — Trail-Following Homing</h3>
+    <div class="row"><button id="resetBtn">Reset</button><button id="toggleSim">Pause</button></div>
+    <label>Ants: <span id="numAntsLabel"></span></label>
+    <input id="numAnts" type="range" min="10" max="300" value="80">
+    <label>Pheromone deposit: <span id="pdLabel"></span></label>
+    <input id="pheromoneDeposit" type="range" min="0.01" max="1" step="0.01" value="0.18">
+    <label>Evaporation (multiplier): <span id="evapLabel"></span></label>
+    <input id="evap" type="range" min="0.90" max="0.999" step="0.001" value="0.98">
+    <label>Leak (subtract per tick): <span id="leakLabel"></span></label>
+    <input id="leak" type="range" min="0.000" max="0.01" step="0.0005" value="0.0005">
+    <label>Exploration (noise): <span id="explLabel"></span></label>
+    <input id="expl" type="range" min="0.0" max="1.0" step="0.01" value="0.24">
+    <label>Sensor range: <span id="sensLabel"></span></label>
+    <input id="sensorRange" type="range" min="4" max="30" value="12">
+    <hr>
+    <div class="hint">Left-click drag to draw obstacle. Right-click to move food. Nest = green. Food = red.</div>
+    <div class="hint">When carrying, ants will now preferentially follow the pheromone trail they left (better obstacle navigation).</div>
+  </div>
+
+  <canvas id="c" width="900" height="600"></canvas>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+
+  // UI elements
+  const numAntsInput = document.getElementById('numAnts');
+  const pheromoneDepositInput = document.getElementById('pheromoneDeposit');
+  const evapInput = document.getElementById('evap');
+  const leakInput = document.getElementById('leak');
+  const explInput = document.getElementById('expl');
+  const sensorRangeInput = document.getElementById('sensorRange');
+  const resetBtn = document.getElementById('resetBtn');
+  const toggleSim = document.getElementById('toggleSim');
+
+  const numAntsLabel = document.getElementById('numAntsLabel');
+  const pdLabel = document.getElementById('pdLabel');
+  const evapLabel = document.getElementById('evapLabel');
+  const leakLabel = document.getElementById('leakLabel');
+  const explLabel = document.getElementById('explLabel');
+  const sensLabel = document.getElementById('sensLabel');
+
+  let width = canvas.width, height = canvas.height;
+  const gridSize = 96; // somewhat finer grid
+  const cols = gridSize, rows = Math.round(gridSize * height / width);
+  const cellW = width / cols, cellH = height / rows;
+  let pher = new Float32Array(cols*rows);
+  let obstacles = new Uint8Array(cols*rows);
+
+  // nest & food locations (in pixels)
+  const nest = {x: 80, y: height/2};
+  let food = {x: width-100, y: height/2};
+
+  // ants
+  let ants = [];
+  function resetAnts(n) {
+    ants = [];
+    for (let i=0;i<n;i++){
+      ants.push({
+        x: nest.x + (Math.random()*18-9),
+        y: nest.y + (Math.random()*18-9),
+        angle: Math.random()*Math.PI*2,
+        carrying: false,
+        speed: 1.6
+      });
+    }
+  }
+
+  // helpers
+  function idx(cx,cy){ return Math.max(0, Math.min(cols-1, cx)) + Math.max(0, Math.min(rows-1, cy))*cols; }
+  function worldToCell(x,y){ return {cx: Math.floor(x/cellW), cy: Math.floor(y/cellH)}; }
+
+  // UI state
+  function updateLabels(){
+    numAntsLabel.textContent = numAntsInput.value;
+    pdLabel.textContent = Number(pheromoneDepositInput.value).toFixed(3);
+    evapLabel.textContent = Number(evapInput.value).toFixed(3);
+    leakLabel.textContent = Number(leakInput.value).toFixed(4);
+    explLabel.textContent = Number(explInput.value).toFixed(2);
+    sensLabel.textContent = sensorRangeInput.value;
+  }
+  updateLabels();
+
+  // simulation params (read from controls each frame)
+  function stepSim(){
+    const deposit = Number(pheromoneDepositInput.value);
+    const evap = Number(evapInput.value);
+    const leak = Number(leakInput.value);
+    const exploration = Number(explInput.value);
+    const sensorRange = Number(sensorRangeInput.value);
+    const diffusionAlpha = 0.09; // gentle diffusion; lower -> sharper gradients
+    const zeroThresh = 1e-5; // clamp threshold
+
+    // each ant moves & deposits
+    for (let a of ants){
+      // ---------- SENSING ----------
+      // If carrying: use stronger trail-following sensing (longer range, lower exploration)
+      // If not carrying: use normal sensing
+      const isCarrying = a.carrying;
+      const senseRange = isCarrying ? Math.max(6, sensorRange * 1.4) : sensorRange;
+      const effectiveExpl = isCarrying ? Math.max(0.02, exploration * 0.18) : exploration;
+
+      const curCell = worldToCell(a.x, a.y);
+      const curVal = pher[idx(curCell.cx, curCell.cy)];
+      const lookAngles = [-0.6, 0, 0.6]; // left, forward, right
+      let bestAngle = a.angle;
+      let bestDiff = -Infinity;
+      for (let la of lookAngles){
+        const ang = a.angle + la;
+        const tx = a.x + Math.cos(ang) * senseRange;
+        const ty = a.y + Math.sin(ang) * senseRange;
+        const c = worldToCell(tx, ty);
+        const val = pher[idx(c.cx, c.cy)];
+        const diff = val - curVal;
+        if (diff > bestDiff){
+          bestDiff = diff;
+          bestAngle = ang;
+        }
+      }
+
+      // If there's a positive gradient in that direction and random check passes, bias toward it
+      if (bestDiff > 0 && Math.random() > effectiveExpl){
+        // stronger bias when carrying (trail-following)
+        const jitter = isCarrying ? 0.15 : 0.25;
+        a.angle = bestAngle + (Math.random()-0.5)*jitter;
+      } else {
+        // normal wandering
+        a.angle += (Math.random()-0.5)*0.8;
+      }
+      // ------------------------------------------------
+
+      // move (avoid obstacles)
+      const nx = a.x + Math.cos(a.angle)*a.speed;
+      const ny = a.y + Math.sin(a.angle)*a.speed;
+      const cell = worldToCell(nx,ny);
+      if (obstacles[idx(cell.cx,cell.cy)]){
+        // slide/bounce: turn away more strongly when hitting obstacle
+        a.angle += Math.PI*0.6*(Math.random()>0.5?1:-1);
+      } else {
+        a.x = Math.max(2, Math.min(width-2, nx));
+        a.y = Math.max(2, Math.min(height-2, ny));
+      }
+
+      // pick up food
+      const dFood = Math.hypot(a.x-food.x, a.y-food.y);
+      if (!a.carrying && dFood < 6){
+        a.carrying = true;
+      }
+      // drop at nest (no giant burst)
+      const dNest = Math.hypot(a.x-nest.x, a.y-nest.y);
+      if (a.carrying && dNest < 8){
+        a.carrying = false;
+      }
+
+      // deposit continuous trail only when carrying
+      if (a.carrying){
+        const c = worldToCell(a.x,a.y);
+        const id = idx(c.cx,c.cy);
+        pher[id] += deposit;
+      }
+    }
+
+    // pheromone evaporation + leak
+    for (let i=0;i<pher.length;i++){
+      // multiplicative evaporation then subtract a small leak
+      let v = pher[i] * evap - leak;
+      // clamp to zero if tiny or negative
+      if (v <= zeroThresh) v = 0;
+      pher[i] = v;
+    }
+
+    // gentle diffusion (mix with neighbors but keep values non-negative)
+    const copy = pher.slice();
+    for (let y=0;y<rows;y++){
+      for (let x=0;x<cols;x++){
+        const id = idx(x,y);
+        const center = copy[id];
+        let sum = 0, count = 0;
+        if (x>0){ sum += copy[idx(x-1,y)]; count++; }
+        if (x<cols-1){ sum += copy[idx(x+1,y)]; count++; }
+        if (y>0){ sum += copy[idx(x,y-1)]; count++; }
+        if (y<rows-1){ sum += copy[idx(x,y+1)]; count++; }
+        const neighborAvg = count ? sum/count : 0;
+        let newv = center * (1 - diffusionAlpha) + neighborAvg * diffusionAlpha;
+        if (newv <= zeroThresh) newv = 0;
+        pher[id] = newv;
+      }
+    }
+  }
+
+  // draw
+  function draw(){
+    ctx.clearRect(0,0,width,height);
+
+    // draw pheromone heatmap
+    for (let y=0;y<rows;y++){
+      for (let x=0;x<cols;x++){
+        const v = pher[idx(x,y)];
+        if (v>0.00002){
+          const alpha = Math.min(1, v*4);
+          ctx.fillStyle = `rgba(255,165,0,${alpha})`;
+          ctx.fillRect(x*cellW, y*cellH, cellW, cellH);
+        }
+      }
+    }
+
+    // obstacles
+    ctx.fillStyle = '#333';
+    for (let y=0;y<rows;y++){
+      for (let x=0;x<cols;x++){
+        if (obstacles[idx(x,y)]){
+          ctx.fillRect(x*cellW, y*cellH, cellW, cellH);
+        }
+      }
+    }
+
+    // nest & food
+    ctx.beginPath();
+    ctx.fillStyle = 'lime';
+    ctx.arc(nest.x, nest.y, 10, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath();
+    ctx.fillStyle = 'crimson';
+    ctx.arc(food.x, food.y, 10, 0, Math.PI*2); ctx.fill();
+
+    // ants
+    for (let a of ants){
+      ctx.beginPath();
+      ctx.fillStyle = a.carrying ? 'yellow' : 'white';
+      ctx.arc(a.x, a.y, 3,0,Math.PI*2); ctx.fill();
+    }
+  }
+
+  let running = true;
+  function loop(){
+    if (running){
+      // adapt ant count
+      const desired = Number(numAntsInput.value);
+      if (ants.length < desired) resetAnts(desired);
+      else if (ants.length > desired) ants.length = desired;
+
+      stepSim();
+      draw();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  // init grid
+  function resetAll(){
+    pher = new Float32Array(cols*rows);
+    obstacles = new Uint8Array(cols*rows);
+    // default obstacle: vertical block in center with gap
+    for (let y=0;y<rows;y++){
+      for (let x=0;x<cols;x++){
+        const i = idx(x,y);
+        if (x === Math.floor(cols/2) && Math.abs(y - Math.floor(rows/2)) > 6) obstacles[i] = 1;
+      }
+    }
+    resetAnts(Number(numAntsInput.value));
+  }
+  resetAll();
+  requestAnimationFrame(loop);
+
+  // canvas mouse for drawing obstacles / moving food
+  let drawing = false;
+  canvas.addEventListener('pointerdown', (e) => {
+    drawing = true; drawObstacleAt(e);
+  });
+  canvas.addEventListener('pointermove', (e)=>{ if (drawing) drawObstacleAt(e) });
+  window.addEventListener('pointerup', ()=> drawing = false);
+
+  function drawObstacleAt(e){
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const c = worldToCell(x,y);
+    obstacles[idx(c.cx,c.cy)] = 1;
+  }
+
+  // move food by right-click
+  canvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    food.x = e.clientX - rect.left; food.y = e.clientY - rect.top;
+  });
+
+  // UI bindings
+  numAntsInput.addEventListener('input', updateLabels);
+  pheromoneDepositInput.addEventListener('input', updateLabels);
+  evapInput.addEventListener('input', updateLabels);
+  leakInput.addEventListener('input', updateLabels);
+  explInput.addEventListener('input', updateLabels);
+  sensorRangeInput.addEventListener('input', updateLabels);
+
+  resetBtn.addEventListener('click', () => { resetAll(); });
+  toggleSim.addEventListener('click', () => { running = !running; toggleSim.textContent = running ? 'Pause' : 'Resume'; });
+
+})();
+</script>
+</body>
+</html>
